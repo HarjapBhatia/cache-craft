@@ -448,14 +448,16 @@ GET /api/items/42?strategy=distributed-lock&ttl=30&delay=250&jitter=0.1
 * `delay` is the artificial PostgreSQL delay in milliseconds.
 * `jitter` is the symmetric TTL variation fraction.
 
+At the current implementation stage, only `strategy=no-cache` is available. The remaining strategy values are part of the planned API contract and return HTTP 400 until their stages are implemented. `GET /debug/db-queries` returns the current process-local repository query count as `{"dbQueryCount":N}`.
+
 ### Item response
 
 ```json
 {
   "id": 42,
   "name": "Item 42",
-  "price": 731,
-  "description": "{\"payload\":\"dummy data used to simulate a larger response\"}"
+  "price": 1654,
+  "description": "Deterministic seed item 42 for cache saturation experiments."
 }
 ```
 
@@ -486,20 +488,21 @@ cache-craft/
         data.sql
       java/
         com/
-          cachelab/
-            CacheLabApplication.java
+          cachecraft/
+            CacheCraftApplication.java
             model/
               Item.java
               CacheResponse.java
+              DbQueryCount.java
             controller/
+              ApiError.java
               ItemController.java
-              BulkWarmController.java
               DebugController.java
               GlobalExceptionHandler.java
             service/
               ItemService.java
-              LocalLockService.java
-              RedisLockService.java
+              ItemNotFoundException.java
+              UnsupportedStrategyException.java
             repository/
               ItemRepository.java
 ```
@@ -508,7 +511,7 @@ cache-craft/
 
 * **`docker-compose.yml`** starts PostgreSQL 16, Redis 7, Nginx, and the three API services.
 * **`nginx.conf`** defines the API upstream, balances requests across the three Spring Boot instances, and exposes the public API entry point.
-* **`pom.xml`** declares Spring Web, Spring Data Redis, PostgreSQL JDBC, and HikariCP.
+* **`pom.xml`** declares Spring Web, Spring JDBC, Spring Data Redis, PostgreSQL JDBC, validation, and test dependencies.
 * **`run-test.sh`** validates key-value arguments, selects the k6 script, captures repository-counter deltas, and supplies k6 environment variables.
 * **`baseline.js`** calibrates the local machine with `delay=0`, then establishes the baseline capacity profile.
 * **`stampede.js`** provides single-instance and deterministic three-instance bursts for cache-aside, local-single-flight, and distributed-lock experiments.
@@ -516,17 +519,14 @@ cache-craft/
 * **`application.yml`** defines Tomcat's platform-thread limit, disables virtual threads, configures HikariCP, and supplies default experiment values.
 * **`schema.sql`** creates the `items` table.
 * **`data.sql`** uses PostgreSQL `generate_series` to create 10,000 items.
-* **`CacheLabApplication.java`** starts each Spring Boot API process.
-* **`Item.java`** maps the item row and payload fields.
+* **`CacheCraftApplication.java`** starts each Spring Boot API process.
+* **`Item.java`** is the immutable row value for the item fields.
 * **`CacheResponse.java`** carries an `Item` and cache status from service to controller.
-* **`ItemController.java`** serves `GET /api/items/{id}` and sets `X-Cache` on successful responses.
-* **`BulkWarmController.java`** bulk-warms all item keys with one `PXAT` expiry timestamp.
-* **`DebugController.java`** serves the repository query count.
-* **`GlobalExceptionHandler.java`** maps JDBC connection-acquisition failure to HTTP 503.
-* **`ItemService.java`** routes directly by strategy and owns cache-aside behavior.
-* **`LocalLockService.java`** implements JVM-local `ConcurrentHashMap` single-flight behavior.
-* **`RedisLockService.java`** owns token generation, `SET NX PX` acquisition, double checking, polling, timeout fallback, and Lua safe release.
-* **`ItemRepository.java`** executes the server-side delayed SQL through an acquired JDBC connection and increments the query counter.
+* **`ItemController.java`** currently serves the `no-cache` path for `GET /api/items/{id}`, validates inputs, and sets `X-Cache: MISS`.
+* **`DebugController.java`** returns the local repository query counter at `GET /debug/db-queries`.
+* **`GlobalExceptionHandler.java`** maps invalid request constraints and unsupported strategies to HTTP 400.
+* **`ItemService.java`** routes through the direct strategy switch; Stage 2 implements `no-cache`.
+* **`ItemRepository.java`** executes the PostgreSQL `pg_sleep` query after acquiring a connection and increments the query counter immediately before execution.
 
 ## Experiment protocol
 
