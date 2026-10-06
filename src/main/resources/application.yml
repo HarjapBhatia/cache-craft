@@ -1,0 +1,33 @@
+spring:
+  application:
+    name: cache-craft
+  threads:
+    virtual:
+      enabled: false
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/cachecraft}
+    username: ${SPRING_DATASOURCE_USERNAME:cachecraft}
+    password: ${SPRING_DATASOURCE_PASSWORD:cachecraft}
+    hikari:
+      maximum-pool-size: 20
+      connection-timeout: 2000
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:localhost}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+  sql:
+    init:
+      mode: always
+
+server:
+  tomcat:
+    threads:
+      max: 200
+
+cachecraft:
+  instance-name: ${CACHECRAFT_INSTANCE_NAME:local}
+  cache:
+    default-ttl-seconds: 30
+    symmetric-jitter: 0.10
+  lock:
+    lease-millis: 5000

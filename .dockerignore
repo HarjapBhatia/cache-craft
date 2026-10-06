@@ -1,0 +1,8 @@
+.git
+.idea
+.vscode
+.mvn/wrapper/dists
+target
+docs
+k6-load-tests
+*.md

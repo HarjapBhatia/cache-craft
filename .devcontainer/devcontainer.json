@@ -1,0 +1,49 @@
+{
+  "name": "CacheCraft (Java 21)",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {
+      "version": "latest",
+      "moby": true
+    }
+  },
+  "privileged": true,
+  "forwardPorts": [8080, 8081, 8082, 8083],
+  "portsAttributes": {
+    "8080": {
+      "label": "CacheCraft via Nginx",
+      "onAutoForward": "notify",
+      "visibility": "private"
+    },
+    "8081": {
+      "label": "API 1 direct test endpoint",
+      "onAutoForward": "silent",
+      "visibility": "private"
+    },
+    "8082": {
+      "label": "API 2 direct test endpoint",
+      "onAutoForward": "silent",
+      "visibility": "private"
+    },
+    "8083": {
+      "label": "API 3 direct test endpoint",
+      "onAutoForward": "silent",
+      "visibility": "private"
+    }
+  },
+  "postCreateCommand": "chmod +x mvnw && ./mvnw -q -DskipTests dependency:go-offline",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "redhat.java",
+        "vscjava.vscode-java-pack",
+        "vmware.vscode-spring-boot",
+        "ms-azuretools.vscode-docker"
+      ]
+    }
+  },
+  "remoteUser": "vscode"
+}

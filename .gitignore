@@ -1,0 +1,7 @@
+target/
+.mvn/wrapper/dists/
+.idea/
+.vscode/
+*.iml
+.env
+docs/
