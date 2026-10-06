@@ -1,16 +1,6 @@
 {
   "name": "CacheCraft (Java 21)",
-  "build": {
-    "dockerfile": "Dockerfile",
-    "context": ".."
-  },
-  "features": {
-    "ghcr.io/devcontainers/features/docker-in-docker:2": {
-      "version": "latest",
-      "moby": true
-    }
-  },
-  "privileged": true,
+  "image": "mcr.microsoft.com/devcontainers/java:21-bookworm",
   "forwardPorts": [8080, 8081, 8082, 8083],
   "portsAttributes": {
     "8080": {

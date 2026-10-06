@@ -558,7 +558,7 @@ Repeat the avalanche workload with `jitter=0.10` and the 5 ms conservative capac
 
 ## GitHub Codespaces workflow
 
-CacheCraft is ready to open in GitHub Codespaces. The committed `.devcontainer/` configuration creates a Java 21 development environment with Maven, Docker/Docker Compose, and k6. It preserves `docker-compose.yml` as the canonical experiment topology: PostgreSQL 16, Redis 7, three API instances, and Nginx.
+CacheCraft is ready to open in GitHub Codespaces. The committed `.devcontainer/` configuration uses the official Java 21 development image and prefetches Maven dependencies. It preserves `docker-compose.yml` as the canonical experiment topology: PostgreSQL 16, Redis 7, three API instances, and Nginx.
 
 ### Create and verify a Codespace
 
@@ -570,18 +570,19 @@ CacheCraft is ready to open in GitHub Codespaces. The committed `.devcontainer/`
    ```bash
    java -version
    ./mvnw -version
-   docker compose version
-   k6 version
+   docker --version || true
+   docker compose version || true
+   k6 version || true
    ```
 
-5. Build and start the experiment topology:
+5. If Docker Compose is available, build and start the experiment topology:
 
    ```bash
    docker compose up --build -d
    docker compose ps
    ```
 
-The Codespace automatically forwards private ports for the following services:
+The Codespace automatically forwards private ports for the following services when the Compose topology is running:
 
 | Port | Purpose |
 | --- | --- |
@@ -603,9 +604,9 @@ docker compose logs --follow
 docker compose down
 ```
 
-After changing `.devcontainer/Dockerfile` or `.devcontainer/devcontainer.json`, use **Codespaces: Rebuild Container**. Application-code changes do not need a container rebuild.
+After changing `.devcontainer/devcontainer.json`, use **Codespaces: Rebuild Container**. Application-code changes do not need a container rebuild.
 
-When the Stage 7 k6 scripts are implemented, run them inside the Codespace using `./run-test.sh`. This is useful for functional proof, but performance figures are specific to the selected Codespaces VM: k6, Nginx, the APIs, Redis, and PostgreSQL share its CPU and memory. Record the machine type, date, commit SHA, exact arguments, topology/reset state, debug-counter delta, and raw k6 output with each experiment.
+When the Stage 7 k6 scripts are implemented, install or enable k6 in the Codespace and run them through `./run-test.sh`. This is useful for functional proof, but performance figures are specific to the selected Codespaces VM: k6, Nginx, the APIs, Redis, and PostgreSQL share its CPU and memory. Record the machine type, date, commit SHA, exact arguments, topology/reset state, debug-counter delta, and raw k6 output with each experiment.
 
 Stop Codespaces when they are not in use to avoid active-compute charges. Do not enable prebuilds until the development environment is stable. A full disposable-state reset is available only when no evidence needs preserving:
 
