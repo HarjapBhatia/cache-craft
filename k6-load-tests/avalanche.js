@@ -1,0 +1,93 @@
+import http from 'k6/http';
+import { check, sleep } from 'k6';
+import { Rate } from 'k6/metrics';
+
+export const options = {
+    scenarios: {
+        avalanche: {
+            executor: 'constant-arrival-rate',
+            rate: 2000, // 2000 requests per second
+            timeUnit: '1s',
+            duration: '10s',
+            preAllocatedVUs: 100,
+            maxVUs: 500,
+        },
+    },
+};
+
+const hitRate = new Rate('cache_hit_rate');
+const errorRate = new Rate('error_rate');
+const errors503 = new Rate('http_503_errors');
+
+export function setup() {
+    // 1. Reset cache
+    const resetRes = http.post('http://localhost:8080/debug/cache/reset');
+    check(resetRes, { 'reset successful': (r) => r.status === 200 });
+
+    // 2. Trigger bulk warm
+    const ttl = __ENV.TTL || 30;
+    const warmRes = http.post(`http://localhost:8080/debug/cache/bulk-warm?ttl=${ttl}`);
+    check(warmRes, { 'warm successful': (r) => r.status === 200 });
+    
+    const warmData = warmRes.json();
+    const expiresAtMs = warmData.expiresAtEpochMs;
+    
+    console.log(`Cache warmed with ${warmData.warmedKeyCount} keys. Expiry epoch: ${expiresAtMs}`);
+    
+    // Calculate wait time until 1 second BEFORE expiry to start ramping up traffic
+    const now = Date.now();
+    let waitMs = expiresAtMs - now - 1000;
+    if (waitMs < 0) waitMs = 0;
+    
+    console.log(`Waiting ${waitMs}ms before starting test load...`);
+    sleep(waitMs / 1000); // k6 sleep takes seconds
+    
+    return { expiresAtMs };
+}
+
+export default function (data) {
+    // Randomly pick one of the 10,000 seeded items
+    const id = Math.floor(Math.random() * 10000) + 1;
+    const url = `http://localhost:8080/api/items/${id}?strategy=${__ENV.STRATEGY}&delay=${__ENV.DELAY}&ttl=${__ENV.TTL}&jitter=${__ENV.JITTER}`;
+    
+    const res = http.get(url);
+    
+    const success = check(res, {
+        'status is 200': (r) => r.status === 200,
+    });
+    
+    if (!success) {
+        errorRate.add(1);
+        if (res.status === 503) {
+            errors503.add(1);
+        }
+    }
+    
+    const cacheHeader = res.headers['X-Cache'];
+    if (cacheHeader === 'HIT') {
+        hitRate.add(1);
+    } else if (cacheHeader === 'MISS') {
+        hitRate.add(0);
+    }
+}
+
+export function handleSummary(data) {
+    const totalReqs = data.metrics.http_reqs.values.count;
+    const hitRateValue = data.metrics.cache_hit_rate ? data.metrics.cache_hit_rate.values.rate : 0;
+    const hitCount = Math.round(totalReqs * hitRateValue);
+    const missCount = totalReqs - hitCount - (data.metrics.error_rate ? data.metrics.error_rate.values.count : 0);
+    
+    console.log(`\n======================================================`);
+    console.log(`CacheCraft Avalanche Execution Summary`);
+    console.log(`======================================================`);
+    console.log(`Total Requests: ${totalReqs}`);
+    console.log(`Throughput: ${data.metrics.http_reqs.values.rate.toFixed(2)} req/s`);
+    console.log(`p95 Latency: ${data.metrics.http_req_duration.values.p95.toFixed(2)} ms`);
+    console.log(`Max Latency: ${data.metrics.http_req_duration.values.max.toFixed(2)} ms`);
+    console.log(`Cache Hits: ${hitCount}`);
+    console.log(`Cache Misses (X-Cache: MISS): ${missCount}`);
+    console.log(`Total Errors: ${data.metrics.error_rate ? data.metrics.error_rate.values.count : 0}`);
+    console.log(`HTTP 503 Errors (Pool Exhausted/Lock Timeout): ${data.metrics.http_503_errors ? data.metrics.http_503_errors.values.count : 0}`);
+    console.log(`======================================================\n`);
+    return data;
+}

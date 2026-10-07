@@ -55,7 +55,8 @@ The matrix below defines the evidence each core experiment must produce. It is i
 11. [Experiment protocol](#experiment-protocol)
 12. [GitHub Codespaces workflow](#github-codespaces-workflow)
 13. [Local workflow](#local-workflow)
-14. [Reference material](#reference-material)
+14. [Verification](#verification)
+15. [Reference material](#reference-material)
 
 ## Project scope and operating principles
 
@@ -448,7 +449,7 @@ GET /api/items/42?strategy=distributed-lock&ttl=30&delay=250&jitter=0.1
 * `delay` is the artificial PostgreSQL delay in milliseconds.
 * `jitter` is the symmetric TTL variation fraction.
 
-At the current implementation stage, only `strategy=no-cache` is available. The remaining strategy values are part of the planned API contract and return HTTP 400 until their stages are implemented. `GET /debug/db-queries` returns the current process-local repository query count as `{"dbQueryCount":N}`.
+All five strategies are implemented: `no-cache`, `cache-aside`, `cache-aside-jitter`, `local-single-flight`, and `distributed-lock`. The distributed-lock path rejects delays of 1000 ms or more. `GET /debug/db-queries` returns the current process-local repository query count as `{"dbQueryCount":N}`.
 
 ### Item response
 
@@ -494,6 +495,8 @@ cache-craft/
               Item.java
               CacheResponse.java
               DbQueryCount.java
+            cache/
+              ItemCache.java
             controller/
               ApiError.java
               ItemController.java
@@ -501,6 +504,7 @@ cache-craft/
               GlobalExceptionHandler.java
             service/
               ItemService.java
+              LocalLockService.java
               ItemNotFoundException.java
               UnsupportedStrategyException.java
             repository/
@@ -524,9 +528,12 @@ cache-craft/
 * **`CacheResponse.java`** carries an `Item` and cache status from service to controller.
 * **`ItemController.java`** currently serves the `no-cache` path for `GET /api/items/{id}`, validates inputs, and sets `X-Cache: MISS`.
 * **`DebugController.java`** returns the local repository query counter at `GET /debug/db-queries`.
-* **`GlobalExceptionHandler.java`** maps invalid request constraints and unsupported strategies to HTTP 400.
-* **`ItemService.java`** routes through the direct strategy switch; Stage 2 implements `no-cache`.
+* **`GlobalExceptionHandler.java`** maps invalid input to HTTP 400 and JDBC connection or lock timeouts to HTTP 503.
+* **`ItemService.java`** routes through the direct strategy switch across all five cache strategies.
 * **`ItemRepository.java`** executes the PostgreSQL `pg_sleep` query after acquiring a connection and increments the query counter immediately before execution.
+* **`ItemCache.java`** owns Redis item keys, JSON serialization, expiry, jitter, and cache reset for tests.
+* **`LocalLockService.java`** coalesces same-key misses within one API process.
+* **`RedisLockService.java`** coordinates cold-key leaders across API instances using Redis leases and token-checked release.
 
 ## Experiment protocol
 
@@ -640,6 +647,16 @@ The wrapper selects `stampede.js`, provides environment values, snapshots query 
 ### Read the custom report
 
 The report is the experiment record. Capture throughput, latency percentiles, cache hit rate, HTTP 503 count, dropped iterations, `X-Cache` misses, and repository-query delta. Preserve the runtime versions, CPU details, instance count, and selected parameters with the result so future comparisons are valid.
+
+## Verification
+
+Run the automated suite with:
+
+```bash
+./mvnw test
+```
+
+Unit tests cover cache serialization and TTLs, service strategy routing, same-key local lock behavior, JDBC statement bindings and query-counter placement, request validation, and HTTP response/error mapping. `CacheFlowIntegrationTest` uses Testcontainers to exercise PostgreSQL and Redis together, including database-side delay while a Hikari connection is active and the one-query local single-flight proof. Those four integration checks run when Docker is available and are skipped automatically when it is not.
 
 ## Reference material
 

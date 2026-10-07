@@ -8,6 +8,8 @@ import org.springframework.stereotype.Repository;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -23,6 +25,11 @@ public class ItemRepository {
             FROM pause
             CROSS JOIN items AS i
             WHERE i.id = ?
+            """;
+    private static final String FIND_ALL_SQL = """
+            SELECT id, name, price, description
+            FROM items
+            ORDER BY id
             """;
 
     private final JdbcTemplate jdbcTemplate;
@@ -45,6 +52,15 @@ public class ItemRepository {
                 executeFindById(connection.prepareStatement(FIND_BY_ID_SQL), id, delayMillis));
     }
 
+    /**
+     * Reads the deterministic seed set used to prepopulate a synchronized
+     * avalanche. This is one PostgreSQL statement, not 10,000 point lookups.
+     */
+    public List<Item> findAll() {
+        return jdbcTemplate.execute((ConnectionCallback<List<Item>>) connection ->
+                executeFindAll(connection.prepareStatement(FIND_ALL_SQL)));
+    }
+
     /** Returns the number of item SELECT statements submitted by this process. */
     public long getDbQueryCount() {
         return dbQueryCount.get();
@@ -62,6 +78,19 @@ public class ItemRepository {
                     return Optional.empty();
                 }
                 return Optional.of(mapItem(results));
+            }
+        }
+    }
+
+    private List<Item> executeFindAll(PreparedStatement statement) throws SQLException {
+        try (statement) {
+            dbQueryCount.incrementAndGet();
+            try (ResultSet results = statement.executeQuery()) {
+                List<Item> items = new ArrayList<>();
+                while (results.next()) {
+                    items.add(mapItem(results));
+                }
+                return List.copyOf(items);
             }
         }
     }

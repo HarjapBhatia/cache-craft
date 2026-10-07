@@ -29,12 +29,11 @@ public class ItemController {
     public ResponseEntity<Item> getItem(
             @PathVariable @Min(1) long id,
             @RequestParam(defaultValue = "no-cache") @NotBlank String strategy,
-            @RequestParam(defaultValue = "30") @Min(1) long ttl,
+            @RequestParam(defaultValue = "${cachecraft.cache.default-ttl-seconds:30}") @Min(1) long ttl,
             @RequestParam(defaultValue = "0") @Min(0) long delay,
-            @RequestParam(defaultValue = "0.10") @DecimalMin("0.0") @DecimalMax("1.0") double jitter) {
-        // ttl and jitter are accepted now so the API contract remains stable as
-        // cache strategies arrive in Stage 3. no-cache deliberately ignores them.
-        CacheResponse result = itemService.getItem(id, strategy, delay);
+            @RequestParam(defaultValue = "${cachecraft.cache.symmetric-jitter:0.10}")
+            @DecimalMin("0.0") @DecimalMax("1.0") double jitter) {
+        CacheResponse result = itemService.getItem(id, strategy, ttl, delay, jitter);
         return ResponseEntity.ok()
                 .header("X-Cache", result.cacheHit() ? "HIT" : "MISS")
                 .body(result.item());

@@ -1,6 +1,8 @@
 spring:
   application:
     name: cache-craft
+  profiles:
+    default: local
   threads:
     virtual:
       enabled: false
