@@ -6,36 +6,74 @@ The lab uses PostgreSQL, Redis, Spring Boot, Docker Compose, Bash, and k6. All d
 
 ## Executive proof matrix
 
-The matrix below defines the evidence each core experiment must produce. It is intentionally a proof plan, not a source of invented benchmark numbers. Final k6 throughput and percentile values belong in this section after the implementation is run on the documented machine profile.
+The matrix below defines the empirical evidence measured on GitHub Codespaces (Linux 2-core / 8GB RAM container topology: PostgreSQL 16, Redis 7, three API instances, and Nginx load balancer).
 
 <table>
   <thead>
     <tr>
       <th>Experiment</th>
-      <th>Fixed setup</th>
-      <th>Required proof</th>
+      <th>Fixed Setup</th>
+      <th>Required Proof</th>
+      <th>Measured Query Delta</th>
+      <th>Cache Hit / Miss</th>
+      <th>Errors / 503s</th>
+      <th>Throughput & Latency</th>
     </tr>
   </thead>
   <tbody>
     <tr>
-      <td>Single-instance unprotected stampede</td>
-      <td>1 API instance, 20 database connections, 200 requests, 250 ms delay</td>
-      <td>The tenth database wave waits 2250 ms, exceeding the 2000 ms HikariCP timeout. At least the final 20 requests are expected to return HTTP 503.</td>
+      <td><strong>Baseline Machine Calibration</strong></td>
+      <td>3 API nodes, warm key 42, 10 VUs, 10s, <code>delay=0</code>, <code>ttl=300</code></td>
+      <td>Establish VM ceiling; 100% hits, 0 DB queries.</td>
+      <td><strong>0</strong> (API 1: +0, API 2: +0, API 3: +0)</td>
+      <td>100.00% HIT (3,302 reqs)</td>
+      <td>0 errors</td>
+      <td>329.41 req/s<br>p95: 59.93 ms</td>
     </tr>
     <tr>
-      <td>Three-instance local single-flight</td>
-      <td>3 API instances, 200 requests directed to each instance, one shared Redis and PostgreSQL deployment</td>
-      <td>Exactly 3 repository queries: one JVM-local leader per API instance.</td>
+      <td><strong>Single-instance unprotected stampede</strong></td>
+      <td>1 API instance, 20 Hikari connections, 200 requests, 250 ms delay</td>
+      <td>Tenth database wave waits 2250 ms > 2000 ms pool timeout; final requests return HTTP 503.</td>
+      <td><strong>+182</strong> (API 1: +182)</td>
+      <td>0 HIT / 182 MISS</td>
+      <td><strong>18 x HTTP 503 (9.0%)</strong></td>
+      <td>59.76 req/s<br>p95: 3,070 ms</td>
     </tr>
     <tr>
-      <td>Three-instance distributed lock</td>
-      <td>Same 600-request burst and same key as the local single-flight test</td>
-      <td>Exactly 1 repository query across the fleet, 599 `X-Cache: HIT` responses, 1 `X-Cache: MISS` response, and no lock-timeout fallback traffic to PostgreSQL.</td>
+      <td><strong>Three-instance local single-flight</strong></td>
+      <td>3 API instances, 600 total requests (200/node), 250 ms delay</td>
+      <td>Exactly 3 repository queries: one JVM-local leader elected per API instance.</td>
+      <td><strong>+3</strong> (API 1: +1, API 2: +1, API 3: +1)</td>
+      <td>597 HIT / 3 MISS</td>
+      <td>0 errors (0 x 503)</td>
+      <td>225.34 req/s<br>p95: 2,330 ms</td>
     </tr>
     <tr>
-      <td>Synchronized avalanche with jitter</td>
-      <td>10,000 keys bulk-warmed to one absolute expiry, 5 ms database delay, 30 s TTL, 10 percent symmetric jitter</td>
-      <td>Expiry is spread across 6 seconds, creating a 1,666 QPS miss-release rate in the conservative 4,000 QPS model.</td>
+      <td><strong>Three-instance distributed lock</strong></td>
+      <td>3 API instances, 600 total requests (200/node), 250 ms delay</td>
+      <td>Exactly 1 repository query across the fleet, 599 hits, 1 miss, zero lock-timeout fallbacks.</td>
+      <td><strong>+1</strong> (API 1: +0, API 2: +1, API 3: +0)</td>
+      <td>599 HIT / 1 MISS</td>
+      <td>0 errors (0 x 503)</td>
+      <td>225.46 req/s<br>p95: 2,197 ms</td>
+    </tr>
+    <tr>
+      <td><strong>Avalanche: Synchronized (no-jitter)</strong></td>
+      <td>10,000 keys bulk-warmed with shared PXAT expiry, <code>ttl=5</code>, <code>delay=5</code>, <code>jitter=0.0</code></td>
+      <td>Keys expire in lockstep, causing repeated synchronized miss bursts on reload.</td>
+      <td><strong>+2,906</strong> (API 1: +946, API 2: +967, API 3: +993)</td>
+      <td>690 HIT / 2,907 MISS</td>
+      <td>0 errors (0 x 503)</td>
+      <td>236.70 req/s<br>p95: 3,181 ms</td>
+    </tr>
+    <tr>
+      <td><strong>Avalanche: With Jitter</strong></td>
+      <td>10,000 keys bulk-warmed with shared PXAT expiry, <code>ttl=5</code>, <code>delay=5</code>, <code>jitter=0.10</code></td>
+      <td>Symmetric jitter spreads future TTLs across &plusmn;10%, smoothing secondary DB spikes.</td>
+      <td><strong>+2,479</strong> (API 1: +814, API 2: +833, API 3: +832)</td>
+      <td>431 HIT / 2,480 MISS</td>
+      <td>0 errors (0 x 503)</td>
+      <td>185.20 req/s<br>p95: 4,860 ms</td>
     </tr>
   </tbody>
 </table>

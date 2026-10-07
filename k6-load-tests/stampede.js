@@ -7,9 +7,9 @@ export const options = {
     scenarios: {
         stampede: {
             executor: 'per-vu-iterations',
-            vus: 200, // 200 concurrent requests across the selected API instances
-            iterations: 1, // Each VU sends exactly 1 request
-            maxDuration: '10s', // Let the requests wait in queue
+            vus: parseInt(__ENV.VUS || '200', 10),
+            iterations: 1,
+            maxDuration: '15s',
         },
     },
 };
@@ -43,22 +43,25 @@ export default function () {
 }
 
 export function handleSummary(data) {
-    const totalReqs = data.metrics.http_reqs.values.count;
+    const totalReqs = data.metrics.http_reqs ? data.metrics.http_reqs.values.count : 0;
     const hitRateValue = data.metrics.cache_hit_rate ? data.metrics.cache_hit_rate.values.rate : 0;
     const hitCount = Math.round(totalReqs * hitRateValue);
     const missCount = totalReqs - hitCount - (data.metrics.error_rate ? data.metrics.error_rate.values.count : 0);
-    
+
     console.log(`\n======================================================`);
     console.log(`CacheCraft Stampede Execution Summary`);
     console.log(`======================================================`);
     console.log(`Total Requests: ${totalReqs}`);
     console.log(`Throughput: ${data.metrics.http_reqs.values.rate.toFixed(2)} req/s`);
-    console.log(`p95 Latency: ${data.metrics.http_req_duration.values.p95.toFixed(2)} ms`);
-    console.log(`Max Latency: ${data.metrics.http_req_duration.values.max.toFixed(2)} ms`);
+    const dur = data.metrics.http_req_duration ? data.metrics.http_req_duration.values : {};
+    const p95 = dur['p(95)'] !== undefined ? dur['p(95)'] : (dur.p95 || 0);
+    const max = dur.max !== undefined ? dur.max : 0;
+    console.log(`p95 Latency: ${p95.toFixed(2)} ms`);
+    console.log(`Max Latency: ${max.toFixed(2)} ms`);
     console.log(`Cache Hits: ${hitCount}`);
     console.log(`Cache Misses (X-Cache: MISS): ${missCount}`);
     console.log(`Total Errors: ${data.metrics.error_rate ? data.metrics.error_rate.values.count : 0}`);
     console.log(`HTTP 503 Errors (Pool Exhausted/Lock Timeout): ${data.metrics.http_503_errors ? data.metrics.http_503_errors.values.count : 0}`);
     console.log(`======================================================\n`);
-    return data;
+    return {};
 }

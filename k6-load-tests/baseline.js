@@ -40,11 +40,14 @@ export function handleSummary(data) {
     console.log(`\n======================================================`);
     console.log(`CacheCraft Baseline Execution Summary`);
     console.log(`======================================================`);
-    console.log(`Throughput: ${data.metrics.http_reqs.values.rate.toFixed(2)} req/s`);
-    console.log(`p95 Latency: ${data.metrics.http_req_duration.values.p95.toFixed(2)} ms`);
-    console.log(`Max Latency: ${data.metrics.http_req_duration.values.max.toFixed(2)} ms`);
+    console.log(`Throughput: ${data.metrics.http_reqs ? data.metrics.http_reqs.values.rate.toFixed(2) : '0'} req/s`);
+    const dur = data.metrics.http_req_duration ? data.metrics.http_req_duration.values : {};
+    const p95 = dur['p(95)'] !== undefined ? dur['p(95)'] : (dur.p95 || 0);
+    const max = dur.max !== undefined ? dur.max : 0;
+    console.log(`p95 Latency: ${p95.toFixed(2)} ms`);
+    console.log(`Max Latency: ${max.toFixed(2)} ms`);
     console.log(`Cache Hit Rate: ${(data.metrics.cache_hit_rate ? data.metrics.cache_hit_rate.values.rate * 100 : 0).toFixed(2)}%`);
     console.log(`Errors: ${data.metrics.error_rate ? data.metrics.error_rate.values.count : 0}`);
     console.log(`======================================================\n`);
-    return data;
+    return {};
 }
